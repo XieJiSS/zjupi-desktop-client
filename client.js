@@ -39,6 +39,7 @@ async function registerClient() {
   ).data;
   console.log("received register client response", response);
   if (response.success) {
+    tick(); // we'd prefer to update password immediately
     return;
   }
   if (response.message === "Client already registered with different IP") {
