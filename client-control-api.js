@@ -10,7 +10,9 @@ const spawn = promisify(cp.spawn);
 
 async function findMainPID() {
   if (os.platform() === "win32") {
-    return await exec("wmic process where name='rustdesk.exe' get processid")
+    return await exec("wmic process where name='rustdesk.exe' get processid", {
+      windowsHide: true,
+    })
       .then(({ stdout }) => {
         const pid = stdout.split("\n")[1].trim();
         if (pid) {
