@@ -1,2 +1,2 @@
 npm i -g pm2 --registry=https://registry.npmmirror.com
-regedit.exe /S .\ps-policy.reg
+regedit.exe /S %cd%\ps-policy.reg
