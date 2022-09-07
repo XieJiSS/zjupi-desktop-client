@@ -11,14 +11,38 @@ const axios = require("axios").default.create({
   timeout: 3000,
 });
 
-const assert = require("assert");
-const clientId = process.env["RUSTDESK_ID"];
 const ctrl = require("./client-control-api");
-assert(clientId && /^\d+$/.test(clientId), "config RUSTDESK_ID is not set or is invalid");
 
+/**
+ * @type {string | null}
+ */
+let clientId = null;
 let currPassword = "";
 
-async function registerClient() {
+async function getClientId() {
+  /**
+   * @typedef SClientIdResponse
+   * @prop {boolean} success
+   * @prop {string} message
+   * @prop {{ clientId: string }} data
+   */
+  /**
+   * @type {SClientIdResponse}
+   */
+  const resp = (
+    await axios.get("/api/remote-control/getRandomAvailableClientId")
+  ).data;
+  if (!resp.success) {
+    console.error(new Date(), "failed to get client id", resp.message);
+    return null;
+  }
+  return resp.data.clientId;
+}
+
+/**
+ * @param {string} clientId
+ */
+async function registerClient(clientId) {
   console.log("registering client...");
   if (currPassword === "") {
     currPassword = await ctrl.changePassword();
@@ -55,6 +79,13 @@ async function registerClient() {
 async function tick() {
   console.log(new Date(), "starting new tick...");
   await ctrl.spawnMain();
+  if(clientId === null) {
+    clientId = await getClientId();
+    if(clientId === null) {
+      return;
+    }
+    ctrl.changedClientId(clientId);
+  }
   /**
    * @typedef SUpdateDirective
    * @prop {number} id
@@ -77,7 +108,7 @@ async function tick() {
   console.log("received update", response);
   if (!response.success) {
     if (response.message === "Client not registered") {
-      await registerClient();
+      await registerClient(clientId);
     } else {
       console.error(new Date(), "Server error:", response.message);
     }
@@ -129,7 +160,7 @@ async function tick() {
       currPassword = password;
     }
     if (syncResp.message === "Client not registered") {
-      await registerClient();
+      await registerClient(clientId);
     } else if (syncResp.message === "IP mismatch") {
       console.error(new Date(), "updatePassword failed: IP mismatch");
       // if IP has changed, the old IP will be marked as dead after a short while, after which

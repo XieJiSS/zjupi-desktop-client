@@ -4,9 +4,7 @@ const cp = require("child_process");
 const os = require("os");
 const path = require("path");
 const { promisify } = require("util");
-const { setTimeout: sleep } = require("timers/promises");
 const exec = promisify(cp.exec);
-const spawn = promisify(cp.spawn);
 
 async function findMainPID() {
   if (os.platform() === "win32") {
@@ -45,6 +43,23 @@ async function spawnMain() {
 }
 
 /**
+ * @param {string} clientId
+ */
+async function changedClientId(clientId) {
+  if (os.platform() === "win32") {
+    const subprocess = cp.spawn("./thirdparty/rustdesk.exe", ["--id", clientId], {
+      cwd: path.join(__dirname),
+      detached: true,
+      stdio: "ignore",
+    });
+    subprocess.unref();
+    console.log("Client ID changed to", clientId);
+  } else {
+    throw new Error("Not implemented");
+  }
+}
+
+/**
  * @param {string} [password]
  */
 async function changePassword(password) {
@@ -75,5 +90,6 @@ function _generateRandomPassword() {
 module.exports = {
   findMainPID,
   spawnMain,
+  changedClientId,
   changePassword,
 };
