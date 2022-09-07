@@ -3,10 +3,10 @@
 require("dotenv").config();
 
 const axios = require("axios").default.create({
-  baseURL: "http://localhost:5001",
+  baseURL: `http://${process.env["HOST"]}:${process.env["PORT"]}`,
   headers: {
     "User-Agent": "RemoteControlClient/" + require("./package.json").version,
-    "X-Real-IP": "127.0.0.1", // debug only
+    "X-Real-IP": require("address").ip("WLAN") || "failed to get", // debug only
   },
   timeout: 3000,
 });
