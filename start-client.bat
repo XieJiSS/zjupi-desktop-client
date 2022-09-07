@@ -1,4 +1,5 @@
 @echo off
 
-pm2 start client.js
-pm2 save
+powershell -Command "pm2 stop client"
+powershell -Command "pm2 start client.js"
+powershell -Command "pm2 save"
