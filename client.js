@@ -18,6 +18,8 @@ const ctrl = require("./client-control-api");
  */
 let clientId = null;
 let currPassword = "";
+let tickPending = false;
+let tickPendingRound = 0;
 
 /**
  * @typedef UpdateExecResult
@@ -105,6 +107,17 @@ async function registerClient(clientId) {
  */
 
 async function tick() {
+  if (tickPending) {
+    console.error(new Date(), "old tick still pending, sleeping for this round...");
+    tickPendingRound++;
+    if (tickPendingRound >= 3) {
+      console.error(new Date(), "tick pending for too long, aborting...");
+      // @TODO: report error to server
+      process.exit(1);
+    }
+    return;
+  }
+  tickPending = true;
   const tickStart = new Date();
   console.log(tickStart, "starting new tick...");
   await ctrl.spawnMain();
@@ -117,34 +130,48 @@ async function tick() {
     ctrl.setClientId(clientId);
   }
   /**
-   * @type {SUpdateResponse}
+   * @type {SUpdateDirective | null}
    */
-  const response = (
-    await axios.get("/api/remote-control/getUpdate/" + clientId, {
-      responseType: "json",
-    })
-  ).data;
-  console.log("received update", response);
-  if (!response.success) {
-    if (response.message === "Client not registered") {
-      const succ = await registerClient(clientId);
-      if (!succ) {
-        console.error(new Date(), "failed to register client, aborting");
-        process.exit(1);
+  let update = null;
+  try {
+    /**
+     * @type {SUpdateResponse}
+     */
+    const response = (
+      await axios.get("/api/remote-control/getUpdate/" + clientId, {
+        responseType: "json",
+      })
+    ).data;
+    console.log("received update", response);
+    if (!response.success) {
+      if (response.message === "Client not registered") {
+        const succ = await registerClient(clientId);
+        if (!succ) {
+          console.error(new Date(), "failed to register client, aborting");
+          process.exit(1);
+        }
+      } else {
+        console.error(new Date(), "Server error:", response.message);
       }
-    } else {
-      console.error(new Date(), "Server error:", response.message);
+      tickPending = false;
+      return;
     }
+    if (response.message === "no update") {
+      tickPending = false;
+      return;
+    }
+    if (response.data === null) {
+      console.error(new Date(), "Server error: missing update body");
+      tickPending = false;
+      return;
+    }
+    update = response.data;
+  } catch (e) {
+    console.error(new Date(), "failed to get update", e.message);
+    tickPending = false;
     return;
   }
-  if (response.message === "no update") {
-    return;
-  }
-  if (response.data === null) {
-    console.error(new Date(), "Server error: missing update body");
-    return;
-  }
-  const update = response.data;
+
   /**
    * @type {UpdateExecResult | null}
    */
@@ -173,6 +200,7 @@ async function tick() {
   }
   const tickEnd = new Date();
   console.log(tickEnd, "tick finished in", tickEnd.getTime() - tickStart.getTime(), "ms");
+  tickPending = false;
 }
 
 /**
