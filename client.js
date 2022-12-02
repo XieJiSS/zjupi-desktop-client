@@ -8,7 +8,7 @@ const axios = require("axios").default.create({
     "User-Agent": "RemoteControlClient/" + require("./package.json").version,
     "X-Real-IP": require("address").ip("WLAN") || "failed to get", // debug only
   },
-  timeout: 3000,
+  timeout: 5000,
 });
 
 const ctrl = require("./client-control-api");
@@ -19,25 +19,41 @@ const ctrl = require("./client-control-api");
 let clientId = null;
 let currPassword = "";
 
+/**
+ * @typedef UpdateExecResult
+ * @prop {boolean} success
+ * @prop {string} [message]
+ */
+
+/**
+ * @typedef SClientIdResponse
+ * @prop {boolean} success
+ * @prop {string} message
+ * @prop {{ clientId: string }} data
+ */
+
 async function getClientId() {
-  /**
-   * @typedef SClientIdResponse
-   * @prop {boolean} success
-   * @prop {string} message
-   * @prop {{ clientId: string }} data
-   */
-  /**
-   * @type {SClientIdResponse}
-   */
-  const resp = (
-    await axios.get("/api/remote-control/getRandomAvailableClientId")
-  ).data;
-  if (!resp.success) {
-    console.error(new Date(), "failed to get client id", resp.message);
+  try {
+    /**
+     * @type {SClientIdResponse}
+     */
+    const resp = (await axios.get("/api/remote-control/getAvailableClientId")).data;
+    if (!resp.success) {
+      console.error(new Date(), "failed to get client id", resp.message);
+      return null;
+    }
+    return resp.data.clientId;
+  } catch (e) {
+    console.error(new Date(), "failed to get client id", e.message);
     return null;
   }
-  return resp.data.clientId;
 }
+
+/**
+ * @typedef SRegisterClientResponse
+ * @prop {boolean} success
+ * @prop {string} message
+ */
 
 /**
  * @param {string} clientId
@@ -45,58 +61,61 @@ async function getClientId() {
 async function registerClient(clientId) {
   console.log("registering client...");
   if (currPassword === "") {
-    currPassword = await ctrl.changePassword();
+    currPassword = await ctrl.setPassword();
   }
-  /**
-   * @typedef SRegisterClientResponse
-   * @prop {boolean} success
-   * @prop {string} message
-   */
-  /**
-   * @type {SRegisterClientResponse}
-   */
-  const response = (
-    await axios.post("/api/remote-control/registerClient", {
-      clientId,
-      password: currPassword,
-    })
-  ).data;
-  console.log("received register client response", response);
-  if (response.success) {
-    tick(); // we'd prefer to update password immediately
-    return;
-  }
-  if (response.message === "Client already registered with different IP") {
-    console.error(new Date(), "registerClient failed due to conflicting IP");
-    // if IP has changed, the old IP will be marked as dead after a short while, after which
-    // we can re-register successfully. So we can directly return here.
-    return;
-  } else {
-    console.error(new Date(), "registerClient failed:", response.message);
+  try {
+    /**
+     * @type {SRegisterClientResponse}
+     */
+    const response = (
+      await axios.post("/api/remote-control/registerClient", {
+        clientId,
+        password: currPassword,
+      })
+    ).data;
+    console.log("received register client response", response);
+    if (response.success) {
+      return true;
+    }
+    if (response.message === "Client already registered with different IP") {
+      console.error(new Date(), "registerClient failed due to conflicting IP");
+      // if IP has changed, the old IP will be marked as dead after a short while, after which
+      // we can re-register successfully. So we can directly return here.
+      return false;
+    } else {
+      console.error(new Date(), "registerClient failed:", response.message);
+      return false;
+    }
+  } catch (e) {
+    console.error(new Date(), "registerClient failed:", e.message);
+    return false;
   }
 }
 
+/**
+ * @typedef SUpdateDirective
+ * @prop {number} id
+ * @prop {"changePassword" | "restartPC"} command
+ * @prop {string[]} args
+ *
+ * @typedef SUpdateResponse
+ * @prop {boolean} success
+ * @prop {string} message
+ * @prop {SUpdateDirective | null} data
+ */
+
 async function tick() {
-  console.log(new Date(), "starting new tick...");
+  const tickStart = new Date();
+  console.log(tickStart, "starting new tick...");
   await ctrl.spawnMain();
-  if(clientId === null) {
+  if (clientId === null) {
     clientId = await getClientId();
-    if(clientId === null) {
-      return;
+    if (clientId === null) {
+      console.error(new Date(), "failed to get client id, aborting");
+      process.exit(1);
     }
-    ctrl.changedClientId(clientId);
+    ctrl.setClientId(clientId);
   }
-  /**
-   * @typedef SUpdateDirective
-   * @prop {number} id
-   * @prop {"changePassword"} command
-   * @prop {string[]} args
-   *
-   * @typedef SUpdateResponse
-   * @prop {boolean} success
-   * @prop {string} message
-   * @prop {SUpdateDirective | null} update
-   */
   /**
    * @type {SUpdateResponse}
    */
@@ -108,7 +127,11 @@ async function tick() {
   console.log("received update", response);
   if (!response.success) {
     if (response.message === "Client not registered") {
-      await registerClient(clientId);
+      const succ = await registerClient(clientId);
+      if (!succ) {
+        console.error(new Date(), "failed to register client, aborting");
+        process.exit(1);
+      }
     } else {
       console.error(new Date(), "Server error:", response.message);
     }
@@ -117,60 +140,116 @@ async function tick() {
   if (response.message === "no update") {
     return;
   }
-  if (response.update === null) {
+  if (response.data === null) {
     console.error(new Date(), "Server error: missing update body");
     return;
   }
-  const update = response.update;
-  if (update.command === "changePassword") {
-    let password;
-    try {
-      password = await ctrl.changePassword(update.args[0]);
-    } catch (e) {
-      await axios.post("/api/remote-control/rejectUpdate", {
-        clientId,
-        commandId: update.id,
-        reportedResult: e.message || "client error",
-      });
-      return;
-    }
-    /**
-     * @typedef SSyncPasswordResponse
-     * @prop {boolean} success
-     * @prop {string} message
-     */
-    /**
-     * @type {SSyncPasswordResponse}
-     */
-    const syncResp = (
-      await axios.post("/api/remote-control/updatePassword", {
-        clientId,
-        commandId: update.id,
-        password,
-      })
-    ).data;
-    if (syncResp.success) {
-      currPassword = password;
-      return;
-    }
-    try {
-      await ctrl.changePassword(currPassword); // rollback
-    } catch (e) {
-      console.error(new Date(), "Password rollback failed:", e.message);
-      currPassword = password;
-    }
-    if (syncResp.message === "Client not registered") {
-      await registerClient(clientId);
-    } else if (syncResp.message === "IP mismatch") {
-      console.error(new Date(), "updatePassword failed: IP mismatch");
-      // if IP has changed, the old IP will be marked as dead after a short while, after which
-      // we can re-register successfully. So we can directly return here.
-      return;
+  const update = response.data;
+  /**
+   * @type {UpdateExecResult | null}
+   */
+  let result = null;
+  try {
+    if (update.command === "changePassword") {
+      result = await changePassword(update.args);
+      if (result.success) {
+        await resolveUpdate(update.id);
+      } else {
+        throw new Error(result.message);
+      }
+    } else if (update.command === "restartPC") {
+      await resolveUpdate(update.id).catch(() => {}); // resolve first, ignore error
+      ctrl.restartPC(); // we should not await this!
     } else {
-      console.error(new Date(), "updatePassword failed:", syncResp.message);
+      console.error(new Date(), "Error: unknown update command", update.command);
+      throw new Error("unknown update command");
     }
-  } else {
-    console.error(new Date(), "Error: unknown update command", update.command);
+  } catch (e) {
+    if (result) {
+      await rejectUpdate(update.id, result.message);
+    } else {
+      await rejectUpdate(update.id, e.message);
+    }
+  }
+  const tickEnd = new Date();
+  console.log(tickEnd, "tick finished in", tickEnd.getTime() - tickStart.getTime(), "ms");
+}
+
+/**
+ * @typedef SSyncPasswordResponse
+ * @prop {boolean} success
+ * @prop {string} message
+ */
+
+/**
+ * @param {string[]} args
+ * @returns {Promise<UpdateExecResult>}
+ */
+async function changePassword(args) {
+  let password;
+  try {
+    password = await ctrl.setPassword(args[0]);
+  } catch (e) {
+    return {
+      success: false,
+      message: e.message || "client error inside ctrl.setPassword",
+    };
+  }
+  /**
+   * @type {SSyncPasswordResponse}
+   */
+  const syncResp = (
+    await axios.post("/api/remote-control/syncPassword", {
+      clientId,
+      password,
+    })
+  ).data;
+  if (syncResp.success) {
+    currPassword = password;
+    return {
+      success: true,
+    };
+  }
+  // syncPassword failed handler
+  try {
+    await ctrl.setPassword(currPassword); // rollback
+  } catch (e) {
+    console.error(new Date(), "Password rollback failed:", e.message);
+    currPassword = password;
+  }
+  console.error(new Date(), "updatePassword failed:", syncResp.message);
+  return {
+    success: false,
+    message: syncResp.message,
+  };
+}
+
+/**
+ * @param {number} commandId
+ * @param {string} [reason]
+ */
+async function rejectUpdate(commandId, reason = "update rejected") {
+  try {
+    await axios.post("/api/remote-control/rejectUpdate", {
+      clientId,
+      commandId,
+      reportedResult: reason,
+    });
+  } catch (e) {
+    console.error(new Date(), "rejectUpdate failed:", e.message);
+  }
+}
+/**
+ * @param {number} commandId
+ */
+async function resolveUpdate(commandId) {
+  try {
+    await axios.post("/api/remote-control/resolveUpdate", {
+      clientId,
+      commandId,
+    });
+  } catch (e) {
+    console.error(new Date(), "resolveUpdate failed:", e.message);
   }
 }
 
