@@ -2,11 +2,14 @@
 
 require("dotenv").config();
 
+const localIP = require("address").ip(process.env["WLAN_INTERFACE"]) || "failed to get";
+console.log("wlan interface ip detected as", localIP);
+
 const axios = require("axios").default.create({
   baseURL: `http://${process.env["HOST"]}:${process.env["PORT"]}`,
   headers: {
     "User-Agent": "RemoteControlClient/" + require("./package.json").version,
-    "X-Real-IP": require("address").ip(process.env["WLAN_INTERFACE"]) || "failed to get",
+    "X-Real-IP": localIP,
   },
   timeout: 5000,
 });
