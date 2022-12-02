@@ -6,7 +6,7 @@ const axios = require("axios").default.create({
   baseURL: `http://${process.env["HOST"]}:${process.env["PORT"]}`,
   headers: {
     "User-Agent": "RemoteControlClient/" + require("./package.json").version,
-    "X-Real-IP": require("address").ip("WLAN") || "failed to get", // debug only
+    "X-Real-IP": require("address").ip(process.env["WLAN_INTERFACE"]) || "failed to get",
   },
   timeout: 5000,
 });
