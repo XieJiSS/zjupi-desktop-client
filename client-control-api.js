@@ -14,7 +14,7 @@ async function findMainPID() {
       .then(({ stdout }) => {
         const pid = stdout.split("\n")[1].trim();
         if (pid) {
-          console.log("found main process with pid", pid);
+          console.log("findMainPID: found main process with pid", pid);
           return parseInt(pid, 10);
         } else {
           return null;
@@ -45,7 +45,7 @@ async function spawnMain() {
 /**
  * @param {string} clientId
  */
-async function changedClientId(clientId) {
+async function setClientId(clientId) {
   if (os.platform() === "win32") {
     const subprocess = cp.spawn("./thirdparty/rustdesk.exe", ["--id", clientId], {
       cwd: path.join(__dirname),
@@ -62,7 +62,7 @@ async function changedClientId(clientId) {
 /**
  * @param {string} [password]
  */
-async function changePassword(password) {
+async function setPassword(password) {
   if (!password) {
     password = _generateRandomPassword();
   }
@@ -83,6 +83,33 @@ async function changePassword(password) {
   }
 }
 
+async function restartPC() {
+  if (os.platform() === "win32") {
+    const subprocess = cp.spawn("shutdown", ["/r", "/t", "0"], {
+      cwd: path.join(__dirname),
+      detached: true,
+      stdio: "ignore",
+    });
+    subprocess.unref();
+  } else if (os.platform() === "linux") {
+    const subprocess = cp.spawn("reboot", [], {
+      cwd: path.join(__dirname),
+      detached: true,
+      stdio: "ignore",
+    });
+    subprocess.unref();
+  } else if (os.platform() === "darwin") {
+    const subprocess = cp.spawn("shutdown", ["-r", "now"], {
+      cwd: path.join(__dirname),
+      detached: true,
+      stdio: "ignore",
+    });
+    subprocess.unref();
+  } else {
+    throw new Error("Not implemented");
+  }
+}
+
 function _generateRandomPassword() {
   return (~~(Math.random() * 2147483648)).toString(16).padStart(8, "0");
 }
@@ -90,6 +117,7 @@ function _generateRandomPassword() {
 module.exports = {
   findMainPID,
   spawnMain,
-  changedClientId,
-  changePassword,
+  setClientId,
+  setPassword,
+  restartPC,
 };
