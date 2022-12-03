@@ -119,6 +119,8 @@ async function tick() {
       process.exit(1);
     }
     return;
+  } else {
+    tickPendingRound = 0;
   }
   tickPending = true;
   const tickStart = new Date();
