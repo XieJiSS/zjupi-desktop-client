@@ -1,8 +1,9 @@
 // @ts-check
 
 require("dotenv").config();
+const { getLocalIP } = require("./local-ip");
 
-const localIP = require("address").ip(process.env["WLAN_INTERFACE"]) || "failed to get";
+const localIP = getLocalIP() || "failed to get";
 console.log("wlan interface ip detected as", localIP);
 
 const axios = require("axios").default.create({
