@@ -1,3 +1,6 @@
+// @ts-check
+
+const address = require("address");
 const { networkInterfaces } = require("os");
 const { Netmask } = require("netmask");
 const serverHost = process.env.HOST;
