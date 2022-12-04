@@ -32,7 +32,7 @@ async function spawnMain() {
   if ((await findMainPID()) !== null) {
     return;
   }
-  console.log("spawnning main process...");
+  console.log("spawning main process...");
   const subprocess = cp.spawn("./thirdparty/rustdesk.exe", [], {
     detached: true,
     stdio: "ignore",
