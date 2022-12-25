@@ -102,7 +102,7 @@ async function registerClient(clientId) {
  * @typedef SUpdateDirective
  * @prop {number} id
  * @prop {"changePassword" | "restartPC"} command
- * @prop {string[]} args
+ * @prop {string} args
  *
  * @typedef SUpdateResponse
  * @prop {boolean} success
@@ -184,7 +184,8 @@ async function tick() {
   let result = null;
   try {
     if (update.command === "changePassword") {
-      result = await changePassword(update.args);
+      const args = JSON.parse(update.args);
+      result = await changePassword(args);
       if (result.success) {
         await resolveUpdate(update.id);
       } else {
