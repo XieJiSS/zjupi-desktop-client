@@ -6,15 +6,15 @@ powershell -Command "pm2 --version" && goto :task
 echo "The above error shows that pm2 is not installed."
 echo "Installing pm2..."
 regedit.exe /S %cd%\ps-policy.reg
-npm i --location=global yarn
-yarn config set registry https://registry.npm.taobao.org
-yarn global add pm2
-yarn install
+powershell -Command "npm i --location=global yarn"
+powershell -Command "yarn config set registry https://registry.npm.taobao.org"
+powershell -Command "yarn global add pm2"
+powershell -Command "yarn install"
 echo "done."
 
 :task
-npm i --location=global yarn
-yarn
+powershell -Command "npm i --location=global yarn"
+powershell -Command "yarn"
 node ./start-up.js
 
 pause
