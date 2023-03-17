@@ -3,12 +3,16 @@
 chcp 65001
 powershell -Command "pm2 --version" && goto :task
 
-echo "上述报错表明 pm2 尚未安装。尝试安装 pm2……"
+echo "The above error shows that pm2 is not installed."
+echo "Installing pm2..."
 regedit.exe /S %cd%\ps-policy.reg
-npm i -g pm2 --registry=https://registry.npmmirror.com
+npm i --location=global yarn
+yarn config set registry https://registry.npm.taobao.org
+yarn global add pm2
 echo "安装成功。"
 
 :task
+yarn
 node ./start-up.js
 
 pause
